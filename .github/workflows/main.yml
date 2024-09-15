@@ -9,9 +9,10 @@ on:
     - cron: "46 2 * * 1"
 
 env:
-  LATEST_ZSH: "5.9"
+  REGISTRY: "docker.io"
   DOCKERHUB_ORG: "ohmyzsh"
-  MAIN_OMZ_BRANCH: "master" # TODO: we need to change master with main when migrating the branch
+  LATEST_ZSH: "5.9"
+  LATEST_OMZ: "master" # TODO: we need to change master with main when migrating the branch
 
 jobs:
   get-omz-versions:
@@ -23,12 +24,14 @@ jobs:
       - name: Get Oh My Zsh versions
         id: versions
         run: |
-          OMZ_VERSIONS=$(curl -sL https://api.github.com/repos/ohmyzsh/ohmyzsh/tags | jq -c '["${{ env.MAIN_OMZ_BRANCH }}",.[].name]')
+          OMZ_VERSIONS=$(curl -sL https://api.github.com/repos/ohmyzsh/ohmyzsh/tags | jq -c '["${{ env.LATEST_OMZ }}",.[].name]')
           echo "versions=$OMZ_VERSIONS" >> $GITHUB_OUTPUT
 
   build-omz:
     name: Build Oh My Zsh Docker image
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: "ohmyzsh/ohmyzsh"
     needs:
       - get-omz-versions
     strategy:
@@ -53,12 +56,15 @@ jobs:
       - name: Get tags and versions
         id: tags
         run: |
-          tags=${{ env.DOCKERHUB_ORG }}/ohmyzsh:${{ matrix.omz-version }}
-          if [ ${{matrix.omz-version }} = ${{ env.MAIN_OMZ_BRANCH }} ]; then
-            tags="${tags},${{ env.DOCKERHUB_ORG }}/ohmyzsh:latest"
+          tags="${{ env.IMAGE_NAME }}:${{ matrix.omz-version }}"
+          tags="${tags},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.omz-version }}"
+          if [ ${{matrix.omz-version }} = ${{ env.LATEST_OMZ }} ]; then
+            tags="${tags},${{ env.IMAGE_NAME }}:latest"
+            tags="${tags},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           fi
           echo "tags=$tags" >> $GITHUB_OUTPUT
       - name: Build and push images
+        id: push
         uses: docker/build-push-action@v5
         with:
           context: ohmyzsh
@@ -66,10 +72,19 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           build-args: "OMZ_VERSION=${{ matrix.omz-version }}"
           tags: ${{ steps.tags.outputs.tags }}
+      - name: Attest
+        uses: actions/attest-build-provenance@v1
+        id: attest
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   build-zsh:
     name: Build Zsh Docker images
     runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: "ohmyzsh/zsh"
     strategy:
       matrix:
         zsh-version:
@@ -127,12 +142,15 @@ jobs:
       - name: Get tags and versions
         id: tags
         run: |
-          tags=${{ env.DOCKERHUB_ORG }}/zsh:${{ matrix.zsh-version }}
+          tags="${{ env.IMAGE_NAME }}:${{ matrix.zsh-version }}"
+          tags="${tags},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.zsh-version }}"
           if [ ${{matrix.zsh-version }} = ${{ env.LATEST_ZSH }} ]; then
-            tags="${tags},${{ env.DOCKERHUB_ORG }}/zsh:latest"
+            tags="${tags},${{ env.IMAGE_NAME }}:latest"
+            tags="${tags},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
           fi
           echo "tags=$tags" >> $GITHUB_OUTPUT
       - name: Build and push images
+        id: push
         uses: docker/build-push-action@v5
         with:
           context: zsh
@@ -140,6 +158,13 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           build-args: "ZSH_VERSION=${{ matrix.zsh-version }}"
           tags: ${{ steps.tags.outputs.tags }}
+      - name: Attest
+        uses: actions/attest-build-provenance@v1
+        id: attest
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
 
   update-image-readme:
     needs:
@@ -148,6 +173,8 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'pull_request' }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Update image READMEs
         env:
           DH_USERNAME: ${{ secrets.DOCKERHUB_USER }}
