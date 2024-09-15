@@ -14,6 +14,12 @@ env:
   LATEST_ZSH: "5.9"
   LATEST_OMZ: "master" # TODO: we need to change master with main when migrating the branch
 
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+  packages: write
+
 jobs:
   get-omz-versions:
     name: Get Oh My Zsh versions
