@@ -14,12 +14,6 @@ env:
   LATEST_ZSH: "5.9"
   LATEST_OMZ: "master" # TODO: we need to change master with main when migrating the branch
 
-permissions:
-  id-token: write
-  contents: read
-  attestations: write
-  packages: write
-
 jobs:
   get-omz-versions:
     name: Get Oh My Zsh versions
@@ -78,13 +72,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           build-args: "OMZ_VERSION=${{ matrix.omz-version }}"
           tags: ${{ steps.tags.outputs.tags }}
-      - name: Attest
-        uses: actions/attest-build-provenance@v1
-        id: attest
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          provenance: mode=max
+          sbom: true
 
   build-zsh:
     name: Build Zsh Docker images
@@ -164,13 +153,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           build-args: "ZSH_VERSION=${{ matrix.zsh-version }}"
           tags: ${{ steps.tags.outputs.tags }}
-      - name: Attest
-        uses: actions/attest-build-provenance@v1
-        id: attest
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+          provenance: mode=max
+          sbom: true
 
   update-image-readme:
     needs:
